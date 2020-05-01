@@ -1,15 +1,11 @@
 package mflix.api.daos;
 
 import com.mongodb.MongoClientSettings;
+import com.mongodb.MongoException;
 import com.mongodb.MongoWriteException;
 import com.mongodb.ReadConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
-import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 import mflix.api.models.Comment;
 import mflix.api.models.Critic;
@@ -28,7 +24,12 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
+import static com.mongodb.client.model.Filters.*;
+import static com.mongodb.client.model.Projections.*;
+import static com.mongodb.client.model.Updates.*;
+import static com.mongodb.client.model.Aggregates.*;
 import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
 import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 
@@ -81,7 +82,18 @@ public class CommentDao extends AbstractMFlixDao {
         // comment.
         // TODO> Ticket - Handling Errors: Implement a try catch block to
         // handle a potential write exception when given a wrong commentId.
-        return null;
+        if(!Optional.ofNullable(comment.getId()).isPresent()) {
+            throw new IncorrectDaoOperation("Comment id cannot be null");
+        }
+
+        try {
+            commentCollection.insertOne(comment);
+        } catch (MongoException e) {
+            log.error("An error ocurred while trying to insert a Comment.");
+            return null;
+        }
+
+        return comment;
     }
 
     /**
@@ -103,7 +115,22 @@ public class CommentDao extends AbstractMFlixDao {
         // user own comments
         // TODO> Ticket - Handling Errors: Implement a try catch block to
         // handle a potential write exception when given a wrong commentId.
-        return false;
+        UpdateResult ur = null;
+
+        try {
+            ur = commentCollection.updateOne(
+                    and(
+                            eq("_id", new ObjectId(commentId)),
+                            eq("email", email)),
+                    combine(
+                            set("text", text),
+                            set("date", new Date())));
+        } catch (MongoException e) {
+            log.error("An error ocurred while trying to update a Comment.");
+            return false;
+        }
+
+        return ur.getMatchedCount() > 0 && ur.getModifiedCount() > 0;
     }
 
     /**
